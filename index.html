@@ -115,7 +115,7 @@
             padding: 10px;
         }
 
-        #downloadBtn {
+        #downloadBtn, #billDownloadBtn {
             margin-top: 20px;
             padding: 10px 20px;
             background-color: #007bff;
@@ -128,14 +128,51 @@
             display: none;
         }
 
-        #downloadBtn:hover {
+        #downloadBtn:hover, #billDownloadBtn:hover {
             background-color: #0056b3;
             transform: translateY(-2px);
         }
 
-        #downloadBtn:active {
+        #downloadBtn:active, #billDownloadBtn:active {
             background-color: #004494;
             transform: translateY(0);
+        }
+
+        .history {
+            margin-top: 30px;
+            text-align: left;
+        }
+
+        .history h2 {
+            font-size: 24px;
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+
+        .history ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .history li {
+            background: #f2f2f2;
+            margin: 5px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .customization {
+            margin-top: 30px;
+            text-align: left;
+        }
+
+        .customization label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .customization input {
+            margin-bottom: 10px;
         }
 
         @media (max-width: 768px) {
@@ -171,6 +208,20 @@
 
         <div id="qrCode"></div>
         <button id="downloadBtn"><i class="fas fa-download"></i> Download QR Code</button>
+        <button id="billDownloadBtn"><i class="fas fa-download"></i> Download Bill</button>
+
+        <div class="customization">
+            <h2>Customize Your QR Code</h2>
+            <label for="color">QR Code Color</label>
+            <input type="color" id="color" value="#000000">
+            <label for="logo">Upload Logo (Optional)</label>
+            <input type="file" id="logo" accept="image/*">
+        </div>
+
+        <div class="history">
+            <h2>Payment History</h2>
+            <ul id="paymentHistoryList"></ul>
+        </div>
     </div>
 
     <!-- QRCode.js Library -->
@@ -181,6 +232,12 @@
             const form = document.getElementById('upiForm');
             const qrCodeDiv = document.getElementById('qrCode');
             const downloadBtn = document.getElementById('downloadBtn');
+            const billDownloadBtn = document.getElementById('billDownloadBtn');
+            const paymentHistoryList = document.getElementById('paymentHistoryList');
+            const colorInput = document.getElementById('color');
+            const logoInput = document.getElementById('logo');
+
+            let paymentHistory = [];
 
             form.addEventListener('submit', (event) => {
                 event.preventDefault();
@@ -196,40 +253,92 @@
                 }
 
                 // Generate the UPI payment link
-                const upiLink = `upi://pay?pa=${upiId}&pn=${merchant || 'Merchant'}&am=${amount}&cu=INR&tn=${encodeURIComponent(note || '')}`;
+                const upiLink = `upi://pay?pa=${upiId}&pn=${merchant || 'Merchant'}&am=${amount}&tn=${note}`;
 
-                // Clear previous QR code
+                // Generate the QR Code
                 qrCodeDiv.innerHTML = '';
-
-                // Generate the QR code
-                new QRCode(qrCodeDiv, {
+                const qrCode = new QRCode(qrCodeDiv, {
                     text: upiLink,
                     width: 256,
                     height: 256,
-                    colorDark: "#000000",
+                    colorDark: colorInput.value,
                     colorLight: "#ffffff",
-                    correctLevel: QRCode.CorrectLevel.H
                 });
 
-                downloadBtn.style.display = 'inline';
+                // Show the download button
+                downloadBtn.style.display = 'block';
 
-                // Enable QR code download
-                downloadBtn.addEventListener('click', () => {
-                    const canvas = document.querySelector('#qrCode canvas');
-                    const link = document.createElement('a');
-                    link.href = canvas.toDataURL('image/png');
-                    link.download = 'upi-qr-code.png';
-                    link.click();
-                });
+                // Save payment information to history
+                paymentHistory.push({ upiId, amount, merchant, note });
+                updatePaymentHistory();
+
+                // Reset form
+                form.reset();
             });
+
+            downloadBtn.addEventListener('click', () => {
+                const canvas = qrCodeDiv.querySelector('canvas');
+                if (canvas) {
+                    const link = document.createElement('a');
+                    link.download = `qr-code-${Date.now()}.png`;
+                    link.href = canvas.toDataURL();
+                    link.click();
+                }
+            });
+
+            billDownloadBtn.addEventListener('click', () => {
+                const upiId = document.getElementById('upiId').value.trim();
+                const amount = parseFloat(document.getElementById('amount').value.trim()).toFixed(2);
+                const merchant = document.getElementById('merchant').value.trim();
+                const note = document.getElementById('note').value.trim();
+                const billContent = `
+                    Bill Details:
+                    UPI ID: ${upiId}
+                    Amount: ₹${amount}
+                    Merchant: ${merchant || 'N/A'}
+                    Note: ${note || 'N/A'}
+                `;
+                const blob = new Blob([billContent], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `bill-${Date.now()}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+
+            logoInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.src = e.target.result;
+                        img.onload = () => {
+                            const qrCode = new QRCode(qrCodeDiv, {
+                                text: 'upi://pay?pa=example@upi&am=10.00',
+                                width: 256,
+                                height: 256,
+                                colorDark: colorInput.value,
+                                colorLight: "#ffffff",
+                            });
+                            const ctx = qrCode._el.getContext('2d');
+                            ctx.drawImage(img, 60, 60, 130, 130); // Adjust logo size and position
+                        };
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+
+            function updatePaymentHistory() {
+                paymentHistoryList.innerHTML = '';
+                paymentHistory.forEach(item => {
+                    const li = document.createElement('li');
+                    li.textContent = `UPI ID: ${item.upiId}, Amount: ₹${item.amount}, Merchant: ${item.merchant || 'N/A'}, Note: ${item.note || 'N/A'}`;
+                    paymentHistoryList.appendChild(li);
+                });
+            }
         });
     </script>
-    <script src="donation-widget.js" defer></script>
-    <script>
-    // Initialize the donation widget
-    window.addEventListener('load', function() {
-        createDonationWidget('adnanmuhammad4393@okicici', 120, 'Supporting Fixpay');
-    });
-</script>
 </body>
 </html>
